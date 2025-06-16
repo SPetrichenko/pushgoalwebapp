@@ -8,11 +8,33 @@
   <style>
     body {
       font-family: sans-serif;
+      margin: 0;
+      padding: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 20px;
+      justify-content: flex-start;
       background: #f2f2f2;
+      min-height: 100vh;
+    }
+    .top-bar {
+      width: 100%;
+      display: flex;
+      justify-content: flex-end;
+      padding: 10px;
+    }
+    .top-bar button {
+      background: none;
+      border: none;
+      color: #007bff;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .content {
+      padding: 20px;
+      text-align: center;
+      width: 100%;
+      max-width: 400px;
     }
     .btn {
       width: 200px;
@@ -21,7 +43,7 @@
       border: none;
       font-size: 18px;
       color: white;
-      margin-top: 20px;
+      margin: 40px auto 20px auto;
       opacity: 0.1;
       transition: opacity 0.3s ease, background 0.3s ease;
     }
@@ -32,43 +54,57 @@
       width: 100%;
       max-width: 300px;
     }
+    #goalDisplay {
+      font-size: 20px;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
-  <h2>Настрой цель</h2>
-  <input id="goal" type="text" placeholder="Введи цель" />
-  <select id="color">
-    <option value="#FF5733">Красный</option>
-    <option value="#33C1FF">Синий</option>
-    <option value="#75FF33">Зелёный</option>
-    <option value="#F033FF">Фиолетовый</option>
-  </select>
-  <input id="steps" type="number" min="2" max="30" value="10" placeholder="Шагов до цели" />
-  <button onclick="saveData()">🚀 Начать</button>
+  <div class="top-bar">
+    <button id="resetBtn" onclick="resetGoal()" style="display: none;">Изменить цель</button>
+  </div>
+  <div class="content">
+    <div id="setupForm">
+      <h2>Настрой цель</h2>
+      <input id="goal" type="text" placeholder="Введи цель" />
+      <select id="color">
+        <option value="#FF5733">Красный</option>
+        <option value="#33C1FF">Синий</option>
+        <option value="#75FF33">Зелёный</option>
+        <option value="#F033FF">Фиолетовый</option>
+      </select>
+      <input id="steps" type="number" min="2" max="30" value="10" placeholder="Шагов до цели" />
+      <button onclick="saveData()">🚀 Начать</button>
+    </div>
 
-  <div id="progress" style="display:none;">
-    <h3>Двигайся к цели</h3>
-    <button id="goalBtn" class="btn">0%</button>
+    <div id="progressSection" style="display:none;">
+      <div id="goalDisplay"></div>
+      <button id="goalBtn" class="btn">0%</button>
+    </div>
   </div>
 
   <script>
     let progress = 0;
     let total = 10;
     let selectedColor = '#33C1FF';
+    let currentGoal = '';
 
     function saveData() {
-      const goal = document.getElementById("goal").value;
+      currentGoal = document.getElementById("goal").value;
       selectedColor = document.getElementById("color").value;
       total = parseInt(document.getElementById("steps").value);
 
       Telegram.WebApp.sendData(JSON.stringify({
-        goal: goal,
+        goal: currentGoal,
         color: selectedColor,
         steps_total: total
       }));
 
-      document.getElementById("progress").style.display = "block";
-      updateButton();
+      progress = 0;
+      localStorage.setItem("pushgoalData", JSON.stringify({ currentGoal, selectedColor, total, progress }));
+      applyState();
     }
 
     function updateButton() {
@@ -79,14 +115,45 @@
       btn.style.background = selectedColor;
     }
 
+    function resetGoal() {
+      localStorage.removeItem("pushgoalData");
+      location.reload();
+    }
+
     document.getElementById("goalBtn").addEventListener("click", () => {
       if (progress < total) {
         progress++;
+        localStorage.setItem("pushgoalData", JSON.stringify({ currentGoal, selectedColor, total, progress }));
         updateButton();
       }
     });
 
+    function applyState() {
+      try {
+        const raw = localStorage.getItem("pushgoalData");
+        if (!raw) return;
+
+        const data = JSON.parse(raw);
+        if (!data.currentGoal || !data.selectedColor || !data.total) return;
+
+        currentGoal = data.currentGoal;
+        selectedColor = data.selectedColor;
+        total = data.total;
+        progress = data.progress ?? 0;
+
+        document.getElementById("setupForm").style.display = "none";
+        document.getElementById("progressSection").style.display = "block";
+        document.getElementById("resetBtn").style.display = "inline";
+        document.getElementById("goalDisplay").innerText = currentGoal;
+        updateButton();
+      } catch (e) {
+        console.warn("Ошибка при чтении или парсинге данных:", e);
+        localStorage.removeItem("pushgoalData");
+      }
+    }
+
     Telegram.WebApp.ready();
+    applyState();
   </script>
 </body>
 </html>
