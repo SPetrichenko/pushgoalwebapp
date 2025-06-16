@@ -1,159 +1,132 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
   <title>PushGoal WebApp</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     body {
       font-family: sans-serif;
       margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      background: #f2f2f2;
-      min-height: 100vh;
+      padding: 2em;
+      background-color: #f0f0f0;
+      text-align: center;
+    }
+    .goal-display {
+      font-size: 1.2em;
+      margin-bottom: 1em;
+    }
+    .color-btn {
+      padding: 1em 2em;
+      font-size: 1.5em;
+      margin: 1em auto;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: block;
+      transition: background-color 0.3s, opacity 0.3s;
     }
     .top-bar {
-      width: 100%;
       display: flex;
       justify-content: flex-end;
-      padding: 10px;
+      margin-bottom: 1em;
     }
     .top-bar button {
       background: none;
       border: none;
       color: #007bff;
-      font-size: 14px;
+      font-size: 0.9em;
       cursor: pointer;
-    }
-    .content {
-      padding: 20px;
-      text-align: center;
-      width: 100%;
-      max-width: 400px;
-    }
-    .btn {
-      width: 200px;
-      height: 200px;
-      border-radius: 100px;
-      border: none;
-      font-size: 18px;
-      color: white;
-      margin: 40px auto 20px auto;
-      opacity: 0.1;
-      transition: opacity 0.3s ease, background 0.3s ease;
-    }
-    input, select {
-      margin: 10px 0;
-      padding: 10px;
-      font-size: 16px;
-      width: 100%;
-      max-width: 300px;
-    }
-    #goalDisplay {
-      font-size: 20px;
-      margin-bottom: 10px;
-      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <div class="top-bar">
-    <button id="resetBtn" onclick="resetGoal()" style="display: none;">Изменить цель</button>
-  </div>
-  <div class="content">
-    <div id="setupForm">
-      <h2>Настрой цель</h2>
-      <input id="goal" type="text" placeholder="Введи цель" />
-      <select id="color">
-        <option value="#FF5733">Красный</option>
-        <option value="#33C1FF">Синий</option>
-        <option value="#75FF33">Зелёный</option>
-        <option value="#F033FF">Фиолетовый</option>
-      </select>
-      <input id="steps" type="number" min="2" max="30" value="10" placeholder="Шагов до цели" />
-      <button onclick="saveData()">🚀 Начать</button>
-    </div>
 
-    <div id="progressSection" style="display:none;">
-      <div id="goalDisplay"></div>
-      <button id="goalBtn" class="btn">0%</button>
-    </div>
-  </div>
+<div class="top-bar">
+  <button onclick="resetGoal()">Изменить цель</button>
+</div>
+<div class="goal-display" id="goalText"></div>
+<button class="color-btn" id="goalBtn" onclick="incrementStep()">Шаг</button>
 
-  <script>
-    let progress = 0;
-    let total = 10;
-    let selectedColor = '#33C1FF';
-    let currentGoal = '';
+<script>
+  const tg = window.Telegram.WebApp;
+  tg.ready();
 
-    function saveData() {
-      currentGoal = document.getElementById("goal").value;
-      selectedColor = document.getElementById("color").value;
-      total = parseInt(document.getElementById("steps").value);
+  const userId = tg.initDataUnsafe.user?.id;
+  const API_BASE = 'http://localhost:8080';
 
-      Telegram.WebApp.sendData(JSON.stringify({
-        goal: currentGoal,
-        color: selectedColor,
-        steps_total: total
-      }));
+  let state = {
+    goal: null,
+    color: '#00aaff',
+    total: 10,
+    progress: 0
+  };
 
-      progress = 0;
-      localStorage.setItem("pushgoalData", JSON.stringify({ currentGoal, selectedColor, total, progress }));
-      applyState();
+  function loadUserState() {
+    if (!userId) return;
+    fetch(`${API_BASE}/user/${userId}`)
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => {
+        if (!data.goal) {
+          promptGoalSetup();
+        } else {
+          state.goal = data.goal;
+          state.color = data.color;
+          state.total = data.total;
+          state.progress = data.progress;
+          render();
+        }
+      })
+      .catch(() => promptGoalSetup());
+  }
+
+  function promptGoalSetup() {
+    const goal = prompt("Введите вашу цель");
+    const color = prompt("Выберите цвет (hex)", "#00aaff");
+    const steps = parseInt(prompt("Сколько шагов нужно до достижения?"), 10);
+    if (goal && color && steps) {
+      state = { goal, color, total: steps, progress: 0 };
+      sendToBot();
+      render();
     }
+  }
 
-    function updateButton() {
-      const btn = document.getElementById("goalBtn");
-      const percent = Math.min(100, Math.round((progress / total) * 100));
-      btn.innerText = percent < 100 ? `${percent}%` : "🎯 Цель достигнута!";
-      btn.style.opacity = 0.1 + 0.9 * (progress / total);
-      btn.style.background = selectedColor;
-    }
-
-    function resetGoal() {
-      localStorage.removeItem("pushgoalData");
-      location.reload();
-    }
-
-    document.getElementById("goalBtn").addEventListener("click", () => {
-      if (progress < total) {
-        progress++;
-        localStorage.setItem("pushgoalData", JSON.stringify({ currentGoal, selectedColor, total, progress }));
-        updateButton();
-      }
+  function sendToBot() {
+    const payload = JSON.stringify({
+      goal: state.goal,
+      color: state.color,
+      steps_total: state.total
     });
+    try {
+      tg.sendData(payload);
+    } catch (err) {
+      console.warn("SendData error:", err);
+    }
+  }
 
-    function applyState() {
-      try {
-        const raw = localStorage.getItem("pushgoalData");
-        if (!raw) return;
-
-        const data = JSON.parse(raw);
-        if (!data.currentGoal || !data.selectedColor || !data.total) return;
-
-        currentGoal = data.currentGoal;
-        selectedColor = data.selectedColor;
-        total = data.total;
-        progress = data.progress ?? 0;
-
-        document.getElementById("setupForm").style.display = "none";
-        document.getElementById("progressSection").style.display = "block";
-        document.getElementById("resetBtn").style.display = "inline";
-        document.getElementById("goalDisplay").innerText = currentGoal;
-        updateButton();
-      } catch (e) {
-        console.warn("Ошибка при чтении или парсинге данных:", e);
-        localStorage.removeItem("pushgoalData");
+  function incrementStep() {
+    if (state.progress < state.total) {
+      state.progress++;
+      render();
+      if (state.progress >= state.total) {
+        alert("🎉 Цель достигнута!");
       }
     }
+  }
 
-    Telegram.WebApp.ready();
-    applyState();
-  </script>
+  function render() {
+    document.getElementById('goalText').innerText = `Цель: ${state.goal} (${state.progress}/${state.total})`;
+    const btn = document.getElementById('goalBtn');
+    const ratio = state.progress / state.total;
+    btn.style.opacity = 0.3 + 0.7 * ratio;
+    btn.style.backgroundColor = state.color;
+  }
+
+  function resetGoal() {
+    promptGoalSetup();
+  }
+
+  loadUserState();
+</script>
+
 </body>
 </html>
